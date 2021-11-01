@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+
+.links line {
+  stroke: #999;
+  stroke-opacity: 0.6;
+}
+
+.nodes circle {
+  stroke: #fff;
+  stroke-width: 1.5px;
+}
+
+text {
+  font-family: sans-serif;
+  font-size: 10px;
+}
+
+</style>
+<script src="https://d3js.org/d3.v4.min.js"></script>
+
+<body>
+    <h1>Total {{wallets_count}} wallets in the cluster:</h1>
+    {{wallets_profile | safe}}
+    <hr>
+    <h1>Transaction by Wallet:</h1>
+    {% for key, value in trans_by_wallets.items() %}
+      <h4>Wallet ID: {{key}}</h1>
+      {{value | safe}}
+   {% endfor %}
+   <hr>
+   <h1>Total {{transactions_all_count}} transactions in the cluster: </h1>
+    {{ transactions_all | safe }}
+</body>

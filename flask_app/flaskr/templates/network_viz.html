@@ -1,58 +1,212 @@
 <!DOCTYPE html>
 <meta charset="utf-8">
+<style>
 
-<!-- Load d3.js -->
-<script src="https://d3js.org/d3.v4.js"></script>
+.links line {
+  stroke: #999;
+  stroke-opacity: 0.6;
+}
 
-<!-- Create a div where the graph will take place -->
-<div id="my_dataviz"></div>
+.nodes circle {
+  stroke: #fff;
+  stroke-width: 1.5px;
+}
 
+text {
+  font-family: sans-serif;
+  font-size: 10px;
+}
+
+</style>
+<script src="https://d3js.org/d3.v4.min.js"></script>
+
+<body>
+  <table>
+    <tr>
+      <td>
+        Select an experiment outcome:
+        <select id="cluster_ID" name="exp" id="exp" onchange="update_barchart()">
+          {% for clusterID in clusterIDs %}
+          <option value="{{clusterID}}">{{clusterID}}</option>
+          {% endfor %}
+        </select>
+      </td>
+      <td>
+        <p>Count by cluster ID</p>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        Color by...
+        <div id="selectClusterID"></div>
+        
+      </td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>
+        <svg id="networkGraph" width="1200" height="700"></svg>
+      </td>
+      <td>
+        <div id="countByCluster" width="300" height="700"></div>
+      </td>
+    </tr>
+  </table>
+    <p id="node">Node Info</p>
+    <p>-----------------------</p>
+    <p id="edge">Edge Info</p>
+</body>
 <script>
+  var data_all = {{ counts_by_cluster | tojson }};
 
-// set the dimensions and margins of the graph
-var margin = {top: 10, right: 30, bottom: 30, left: 40},
-  width = 400 - margin.left - margin.right,
-  height = 400 - margin.top - margin.bottom;
+  function selectedCluster(){
+    var expID = document.getElementById('cluster_ID').value;
 
-// append the svg object to the body of the page
-var svg = d3.select("#my_dataviz")
-.append("svg")
-  .attr("width", width + margin.left + margin.right)
-  .attr("height", height + margin.top + margin.bottom)
-.append("g")
-  .attr("transform",
-        "translate(" + margin.left + "," + margin.top + ")");
+    var clusterID = document.querySelector('input[name="clusterID"]:checked').value;
+    d3.selectAll('circle').attr("fill", function(d) { return color_binary(d[expID] == clusterID); }).attr("stroke-width", 0);
+    d3.selectAll('line').attr("stroke-width", function(d) { 
+      console.log(d);
+      if (d.target[expID] == clusterID || d.source[expID] == clusterID){
+        return +Math.sqrt(d.TotalPriceUSD/10000);
+      }
+      else return 0;
+    })
 
-d3.json("https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/data_network.json", function( data) {
 
-  // Initialize the links
-  var link = svg
-    .selectAll("line")
-    .data(data.links)
-    .enter()
-    .append("line")
-      .style("stroke", "#aaa")
+  }
 
-  // Initialize the nodes
-  var node = svg
-    .selectAll("circle")
-    .data(data.nodes)
-    .enter()
-    .append("circle")
-      .attr("r", 20)
-      .style("fill", "#69b3a2")
+  function add_clusterOptions(){
+    var optionsContainer = document.getElementById("selectClusterID");
+    var clusterID = document.getElementById('cluster_ID').value;
 
-  // Let's list the force we wanna apply on the network
-  var simulation = d3.forceSimulation(data.nodes)                 // Force algorithm is applied to data.nodes
-      .force("link", d3.forceLink()                               // This force provides links between nodes
-            .id(function(d) { return d.id; })                     // This provide  the id of a node
-            .links(data.links)                                    // and this the list of links
-      )
-      .force("charge", d3.forceManyBody().strength(-400))         // This adds repulsion between nodes. Play with the -400 for the repulsion strength
-      .force("center", d3.forceCenter(width / 2, height / 2))     // This force attracts nodes to the center of the svg area
-      .on("end", ticked);
+    {% for i in range(100) %}
+      optionsContainer.innerHTML += '<input type="radio" id="{{i}}" name="clusterID" value="{{i}}" onchange="selectedCluster()">{{i}}';
+    {% endfor %}
+  }
+  add_clusterOptions();
 
-  // This function is run at each iteration of the force algorithm, updating the nodes position.
+  function draw_barchart(){
+    var clusterID = document.getElementById('cluster_ID').value;
+    var data = data_all[clusterID];
+    var margin = {top: 20, right: 20, bottom: 30, left: 40},
+        width_barchart = 200 - margin.left - margin.right,
+        height_barchart = 500 - margin.top - margin.bottom;
+
+    // set the ranges
+    var y = d3.scaleBand()
+              .range([height_barchart, 0])
+              .padding(0.1);
+
+    var x = d3.scaleLinear()
+              .range([0, width_barchart]);
+              
+    var svg_barchart = d3.select("#countByCluster")
+        .append("svg")
+        .attr("id", 'barchart')
+        .attr("width", width_barchart + margin.left + margin.right)
+        .attr("height", height_barchart + margin.top + margin.bottom)
+        .append("g")
+        .attr("transform", 
+              "translate(" + margin.left + "," + margin.top + ")");
+
+    // format the data
+    data.forEach(function(d) {
+      d.count = +d.count;
+    });
+
+    // Scale the range of the data in the domains
+    x.domain([0, d3.max(data, function(d){ return d.count; })])
+    y.domain(data.map(function(d) { return d.cluster; }));
+
+    // append the rectangles for the bar chart
+    svg_barchart.selectAll(".bar")
+        .data(data)
+      .enter().append("rect")
+        .attr("class", "bar")
+        .attr("width", function(d) {return x(d.count); } )
+        .attr("y", function(d) { return y(d.cluster); })
+        .attr("height", y.bandwidth());
+
+    // add the x Axis
+    svg_barchart.append("g")
+        .attr("transform", "translate(0," + height_barchart + ")")
+        .call(d3.axisBottom(x));
+
+    // add the y Axis
+    svg_barchart.append("g")
+        .call(d3.axisLeft(y));
+  }
+  draw_barchart();
+  function update_barchart() {
+    var clusterID = document.getElementById('cluster_ID').value;
+    d3.selectAll('circle').attr("fill", function(d) { return color(d[clusterID]); });
+    d3.select("#barchart").remove();
+    // document.getElementById("selectClusterID").innerHTML = "";
+    draw_barchart();
+    // add_clusterOptions();
+  }
+
+var svg = d3.select("#networkGraph"),
+    width = +svg.attr("width"),
+    height = +svg.attr("height");
+
+var color = d3.scaleOrdinal(d3.schemeCategory20);
+var color_binary = d3.scaleOrdinal() // D3 Version 4
+  .domain([true, false])
+  .range(["red", "transparent"]);
+
+var simulation = d3.forceSimulation()
+    .force("link", d3.forceLink().id(function(d) {return d.Id; }))
+    .force("charge", d3.forceManyBody().strength(-0.5))
+    .force("center", d3.forceCenter(width / 2, height / 2));
+
+function stopAnimation() {
+  simulation.stop()
+}
+setTimeout(stopAnimation, 5000);
+
+d3.json("{{url_for('static', filename='opensea_oct29.json') }}", function(error, graph) {
+  if (error) throw error;
+
+  var link = svg.append("g")
+      .attr("class", "links")
+      .selectAll("line")
+      .data(graph.links)
+      .enter().append("line")
+      .attr("stroke-width", function(d) { return +Math.sqrt(d.TotalPriceUSD/10000); }) //Math.sqrt(+d.TotalPrice/10000000000000000);
+      .on("click", function (d) {
+        d3.select("#edge").text(JSON.stringify(d));
+      });
+
+  var node = svg.append("g")
+    .attr("class", "nodes")
+    .selectAll("g")
+    .data(graph.nodes)
+    .enter().append("g")
+
+  var circles = node.append("circle")
+    .attr("r", 3)
+    .attr("fill", function(d) { return color(d['{{colorBy}}']); })
+    .on("click", function (d) {
+      d3.select("#node").text(d.Id)
+    })
+
+  // Create a drag handler and append it to the node object instead
+  var drag_handler = d3.drag()
+      .on("start", dragstarted)
+      .on("drag", dragged)
+      .on("end", dragended);
+
+  drag_handler(node);
+
+  simulation
+      .nodes(graph.nodes)
+      .on("tick", ticked);
+
+  simulation.force("link")
+      .links(graph.links)
+      .size([width, height])
+      ;
   function ticked() {
     link
         .attr("x1", function(d) { return d.source.x; })
@@ -61,11 +215,32 @@ d3.json("https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/d
         .attr("y2", function(d) { return d.target.y; });
 
     node
-         .attr("cx", function (d) { return d.x+6; })
-         .attr("cy", function(d) { return d.y-6; });
+        .attr("transform", function(d) {          
+          return "translate(" + d.x + "," + d.y + ")";
+        })
   }
-
 });
 
+function dragstarted(d) {
+  if (!d3.event.active) simulation.alphaTarget(0.3).restart();
+  d.fx = d.x;
+  d.fy = d.y;
+  d.fixed = true;
+}
+
+function dragged(d) {
+  console.log("BEING DRAGGED")
+  d.fx = Math.max(10, Math.min(width-10, d3.event.x)); 
+  console.log(d.fx);
+  d.fy = Math.max(10, Math.min(height-10, d3.event.y));
+}
+
+function dragended(d) {
+  if (!d3.event.active) simulation.alphaTarget(0);
+  d.fx = d.x;
+  d.fy = d.x;
+  d.fixed=true;
+  stopAnimation();
+}
 
 </script>
