@@ -9,4 +9,4 @@ Run these commands in terminal:
 
 Go to:
 - http://127.0.0.1:5000/opensea
-- http://127.0.0.1:5000/opensea_Detail
+- http://127.0.0.1:5000/opensea_detail?expID=cluster_exp0&clusterID=1
