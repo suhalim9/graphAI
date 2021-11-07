@@ -4,4 +4,3 @@ igraph
 dgl
 sklearn
 requests
-tempfile
