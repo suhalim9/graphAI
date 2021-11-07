@@ -3,3 +3,5 @@ networkx
 igraph
 dgl
 sklearn
+requests
+tempfile
