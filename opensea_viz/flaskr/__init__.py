@@ -88,4 +88,8 @@ def create_app(test_config=None):
     def viz_test():
         return render_template('viz_test.html')
 
+    @app.route('/opensea_v2')
+    def opensea_v2():
+        clusterID = int(request.args.get("clusterID"))
+        return render_template("network_viz2.html", cluster=clusterID)
     return app
