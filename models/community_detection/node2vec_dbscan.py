@@ -1,17 +1,18 @@
 import sys, logging, os, datetime, json
+from stellargraph import StellarGraph
 this_filepath = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(1, '/'.join(this_filepath.split('/')[:-1]))
 
 import util_data, util_graph, util_model
-from embedding import adjMat
-from clustering import hierarchical
+from embedding import node2vec
+from clustering import dbscan
 
 
 ########################################################### 
 # Arguments to get from system
 # 
-# Example running this file
-# python models/community_detection/adjMat_hierarchical.py "{\"node_filename\": \"/Users/suhalim9/Documents/InceptCube/GraphAI/git/data/nodes.csv\", \"edge_filename\": \"/Users/suhalim9/Documents/InceptCube/GraphAI/git/data/edges_withTotalPriceUSD.csv\", \"node_id_col\": \"Id\", \"node_attr_cols\": [], \"edge_src_col\": \"SellerAddress\", \"edge_dst_col\": \"WinnerAddress\", \"edge_attr_cols\": [\"TotalPriceUSD\"], \"output_path_model\": \"/Users/suhalim9/Documents/InceptCube/GraphAI/git/output/model.pkl\", \"output_path_perf_measure\": \"/Users/suhalim9/Documents/InceptCube/GraphAI/git/output/perf_measure.json\", \"output_path_graph_data\": \"/Users/suhalim9/Documents/InceptCube/GraphAI/git/output/graph_data.json\", \"output_path_model_pred\": \"/Users/suhalim9/Documents/InceptCube/GraphAI/git/output/model_output.csv\", \"output_path_logfile\": \"/Users/suhalim9/Documents/InceptCube/GraphAI/git/output/logfile.log\", \"n_cluster\":5}"
+# Example running this file 
+# python models/community_detection/node2vec_hierarchical.py "{\"node_filename\": \"/Users/suhalim9/Documents/InceptCube/GraphAI/git/data/nodes.csv\", \"edge_filename\": \"/Users/suhalim9/Documents/InceptCube/GraphAI/git/data/edges_withTotalPriceUSD.csv\", \"node_id_col\": \"Id\", \"node_attr_cols\": [], \"edge_src_col\": \"SellerAddress\", \"edge_dst_col\": \"WinnerAddress\", \"edge_attr_cols\": [\"TotalPriceUSD\"], \"output_path_model\": \"/Users/suhalim9/Documents/InceptCube/GraphAI/git/output/model.pkl\",  \"output_path_perf_measure\": \"/Users/suhalim9/Documents/InceptCube/GraphAI/git/output/perf_measure.json\", \"output_path_graph_data\": \"/Users/suhalim9/Documents/InceptCube/GraphAI/git/output/graph_data.json\", \"output_path_model_pred\": \"/Users/suhalim9/Documents/InceptCube/GraphAI/git/output/model_output.csv\", \"output_path_logfile\": \"/Users/suhalim9/Documents/InceptCube/GraphAI/git/output/logfile.log\", \"walk_number\":100, \"walk_length\":5, \"p\":0.5, \"q\": 2.0, \"batch_size\": 128, \"epochs\": 5, \"emb_size\": 128, \"optimizer_type\": \"Adam\", \"learning_rate\": 0.001, \"n_cluster\":5}"
 ###########################################################
 
 sysargs = json.loads(sys.argv[1])
@@ -31,7 +32,21 @@ output_path_model_pred = sysargs['output_path_model_pred']  #'/Users/suhalim9/Do
 output_path_logfile = sysargs['output_path_logfile']        #'/Users/suhalim9/Documents/InceptCube/GraphAI/git/output/logfile.log'
 
 ### Model parameters
-n_cluster = sysargs['n_cluster'] #5
+# For Node2Vec
+walk_number = sysargs['walk_number']                        # 100
+walk_length = sysargs['walk_length']                        # 5
+p = sysargs['p']                                            # 0.5
+q = sysargs['q']                                            # 2.0
+batch_size = sysargs['batch_size']                          # 128
+epochs = sysargs['epochs']                                  # 5
+emb_size = sysargs['emb_size']                              # 128
+optimizer_type = sysargs['optimizer_type']                  # Adam
+learning_rate = sysargs['learning_rate']                    # 1e-3
+
+# For DBSCAN
+eps = sysargs['eps'] #0.3
+min_samples = sysargs['min_samples'] #5
+
 
 
 ########################################################### 
@@ -61,8 +76,19 @@ logger.info(f'** Node attribute column:    {node_attr_cols}')
 logger.info(f'** Edge filename:            {edge_filename}')
 logger.info(f'** Edge ID columns:          {edge_src_col} -> {edge_dst_col}')
 logger.info(f'** Edge attribute columns:   {edge_attr_cols}')
-logger.info(f"----- Model Parameters")
-logger.info(f"n_cluster:                   {n_cluster}")
+logger.info(f"----- Model Parameters for Node2Vec Embedding")
+logger.info(f"** walk_number:                 {walk_number}")
+logger.info(f"** walk_length:                 {walk_length}")
+logger.info(f"** p:                           {p}")
+logger.info(f"** q:                           {q}")
+logger.info(f"** batch_size:                  {batch_size}")
+logger.info(f"** epochs:                      {epochs}")
+logger.info(f"** emb_size:                    {emb_size}")
+logger.info(f"** optimizer_type:              {optimizer_type}")
+logger.info(f"** learning_rate:               {learning_rate}")
+logger.info(f"----- Model Parameters for DBSCAN")
+logger.info(f"** eps:                         {eps}")
+logger.info(f"** min_samples:                 {min_samples}")
 logger.info(f"----- Output Paths")
 logger.info(f"** Model:                    {output_path_model}")
 logger.info(f"** Performance measure:      {output_path_perf_measure}")
@@ -78,13 +104,14 @@ G_nx = util_graph.create_graph_nx(node_df, edge_df,
                                   node_id_col=node_id_col, 
                                   edge_src_col=edge_src_col, edge_dst_col=edge_dst_col,
                                   node_attr_cols=node_attr_cols, edge_attr_cols=edge_attr_cols)
+G_stellar = StellarGraph.from_networkx(G_nx)
 
 ########################################################### 
 # Step 2. Run a model
 ###########################################################
 node_id_list = list(G_nx.nodes())
-adjMat = adjMat.compute_adj_mat_dense(G_nx, node_id_list)
-model, pred, perf_measure = hierarchical.train(adjMat, n_cluster)
+n2v = node2vec.compute_node2vec_embedding(G_stellar, node_id_list, walk_number, walk_length, p, q, batch_size, epochs, emb_size, optimizer_type, learning_rate)
+model, pred, perf_measure = dbscan.train(n2v, n_cluster)
 
 ########################################################### 
 # Step 3. Saving files
