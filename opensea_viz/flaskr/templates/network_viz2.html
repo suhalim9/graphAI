@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+
+.links line {
+  stroke: #999;
+  stroke-opacity: 0.6;
+}
+
+.nodes circle {
+  stroke: #fff;
+  stroke-width: 1.5px;
+}
+table {
+    border-collapse: collapse;
+}
+
+table td {
+    border: 1px solid #aaa;
+    padding: 3px;
+}
+text {
+  font-family: sans-serif;
+  font-size: 10px;
+}
+div.tooltip {
+  position: absolute;
+  text-align: center;
+  padding: 2px;
+  font: 12px sans-serif;
+  background: lightsteelblue;
+  border: 0px;
+  border-radius: 8px;
+  pointer-events: none;
+}
+
+</style>
+<script src="https://d3js.org/d3.v4.min.js"></script>
+
+<body>
+    <p id="basicInfo"></p>
+    <p id="selected">Please select a ndoe or edge</p>
+    <button type="button" onclick="pullInfo()">Pull Info</button><br/>
+    <svg id="networkGraph" width="1200" height="700"></svg> <br/>      
+    <div id="detail"></div>
+<script>
+
+var selectedType = "";
+var selectedNode = "";
+var selectedSrcNode = "";
+var selectedDstNode = "";
+
+function pullInfo() {  
+  var htmlStr = `<table style="width: 100%">
+                  <thead>
+                        <tr>
+                            <th>Seller</th>
+                            <th>Winner</th>
+                            <th>Date</th>
+                            <th>TokenId</th>
+                            <th>ETH</th>
+                            <th>USD</th>
+                            <th>TransactionId</th>
+                            <th>AssetOwnerAddress</th>
+                            <th>TransactionHash</th>
+                            <th>eth_open_price</th>
+                        </tr>
+                  `;
+ 
+  if (selectedType == "NODE"){
+    edge_scope.filter(item => item.source.Id == selectedNode || item.target.Id == selectedNode).forEach(item => {
+      htmlStr += "<tr>"
+                + "<td>" + item.source.Id + "</td>"
+                + "<td>" + item.target.Id + "</td>"
+                + "<td>" + item.date + "</td>"
+                + "<td>" + item.TokenId + "</td>"
+                + "<td>" + item.TotalPrice + "</td>"
+                + "<td>" + item.TotalPriceUSD + "</td>"
+                + "<td>" + item.TransactionId + "</td>"
+                + "<td>" + item.AssetOwnerAddress + "</td>"
+                + "<td>" + item.TransactionHash + "</td>"
+                + "<td>" + item.eth_open_price + "</td>"
+                + "</tr>";
+    });
+  } else {
+    edge_scope.filter(item => item.source.Id == selectedSrcNode && item.target.Id == selectedDstNode).forEach(item => {
+    htmlStr += "<tr>"
+                + "<td>" + item.source.Id + "</td>"
+                + "<td>" + item.target.Id + "</td>"
+                + "<td>" + item.date + "</td>"
+                + "<td>" + item.TokenId + "</td>"
+                + "<td>" + item.TotalPrice + "</td>"
+                + "<td>" + item.TotalPriceUSD + "</td>"
+                + "<td>" + item.TransactionId + "</td>"
+                + "<td>" + item.AssetOwnerAddress + "</td>"
+                + "<td>" + item.TransactionHash + "</td>"
+                + "<td>" + item.eth_open_price + "</td>"
+                + "</tr>";
+    });
+  }
+  htmlStr += `</thead>
+                  <tbody id="tbody">
+                  </tbody>
+              </table>`
+  d3.select("#detail").html(htmlStr)
+}
+var node_scope = [];
+var edge_scope = [];
+
+var svg = d3.select("#networkGraph"),
+    width = +svg.attr("width"),
+    height = +svg.attr("height");
+
+var color = d3.scaleOrdinal(d3.schemeCategory20);
+var color_binary = d3.scaleOrdinal() // D3 Version 4
+  .domain([true, false])
+  .range(["red", "transparent"]);
+
+var simulation = d3.forceSimulation()
+    .force("link", d3.forceLink().id(function(d) {return d.Id; }))
+    .force("charge", d3.forceManyBody().strength(-2))
+    .force("center", d3.forceCenter(width / 2, height / 2));
+
+var div = d3.select("body").append("div")
+    .attr("class", "tooltip")
+    .style("opacity", 0);
+
+d3.json("{{url_for('static', filename='opensea_nov09.json') }}", function(error, graph) {
+  if (error) throw error;
+  node_scope = graph.nodes.filter(item=> item.cluster == Number('{{cluster}}'));
+  var node_scope_IDs = [];
+  node_scope.forEach(item => node_scope_IDs.push(item.Id));
+
+  edge_scope = graph.links.filter(link=> node_scope_IDs.includes(link.target) || node_scope_IDs.includes(link.source));
+  d3.select("#basicInfo").text(`Total ${node_scope_IDs.length} Nodes and ${edge_scope.length} Edges`)
+
+  var link = svg.append("g")
+      .attr("class", "links")
+      .selectAll("line")
+      .data(edge_scope)
+      .enter().append("line")
+      .attr("stroke-width", function(d) { return d.transCount*1; })
+      .on("mouseover", function(d) {
+       div.transition()
+         .duration(200)
+         .style("opacity", .9);
+       div.html(`${d.target.Id} - ${d.source.Id} <hr> Sold ${d.TokenId} at ${Number(d.TotalPriceUSD.toFixed(2))}$`)
+          .style("left", (d3.event.pageX + 20) + "px")
+          .style("top", (d3.event.pageY - 28) + "px");
+       })
+     .on("mouseout", function(d) {
+       div.transition()
+         .duration(500)
+         .style("opacity", 0);
+       })
+      .on("click", function (d) {
+        selectedType = "EDGE";
+        selectedSrcNode = d.source.Id;
+        selectedDstNode = d.target.Id;
+        d3.select("#selected").text(`EDGE between (${d.target.Id}) - (${d.source.Id})`);
+      });
+
+  var node = svg.append("g")
+    .attr("class", "nodes")
+    .selectAll("g")
+    .data(graph.nodes.filter(item=>item.cluster == Number('{{cluster}}')))
+    .enter().append("g")
+  var div = d3.select("body").append("div")
+      .attr("class", "tooltip")
+      .style("opacity", 0);
+
+  var circles = node.append("circle")
+    .attr("r", 3)
+    .attr("fill", function(d) { return color(d.cluster); })
+    .on("mouseover", function(d) {
+       div.transition()
+         .duration(200)
+         .style("opacity", .9);
+       div.html(d.Id)
+          .style("left", (d3.event.pageX) + "px")
+          .style("top", (d3.event.pageY - 28) + "px");
+       })
+     .on("mouseout", function(d) {
+       div.transition()
+         .duration(500)
+         .style("opacity", 0);
+       })
+    .on("click", function(d) {
+      selectedType = "NODE";
+      selectedNode = d.Id;
+      d3.select("#selected").text(`NODE ID = ${d.Id}`);
+    })
+
+  // Create a drag handler and append it to the node object instead
+  var drag_handler = d3.drag()
+      .on("start", dragstarted)
+      .on("drag", dragged)
+      .on("end", dragended);
+
+  drag_handler(node);
+
+  simulation
+      .nodes(graph.nodes)
+      .on("tick", ticked);
+
+  simulation.force("link")
+      .links(graph.links)
+      ;
+  function ticked() {
+    link
+        .attr("x1", function(d) { return d.source.x; })
+        .attr("y1", function(d) { return d.source.y; })
+        .attr("x2", function(d) { return d.target.x; })
+        .attr("y2", function(d) { return d.target.y; });
+
+    node
+        .attr("transform", function(d) {          
+          return "translate(" + d.x + "," + d.y + ")";
+        })
+  }
+});
+
+function dragstarted(d) {
+  if (!d3.event.active) simulation.alphaTarget(0.3).restart();
+  d.fx = d.x;
+  d.fy = d.y;
+}
+
+function dragged(d) {
+  d.fx = Math.max(10, Math.min(width-10, d3.event.x)); 
+  d.fy = Math.max(10, Math.min(height-10, d3.event.y));
+}
+
+function dragended(d) {
+  if (!d3.event.active) simulation.alphaTarget(0);
+  d.x = d.x;
+  d.y = d.x;
+  d.fixed=true;
+}
+
+</script>

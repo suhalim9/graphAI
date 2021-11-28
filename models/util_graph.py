@@ -30,7 +30,7 @@ def create_graph_nx(node_df: pd.DataFrame,
     # Note that the line above is preferred way, but to_dict drops duplicates. Thus, we naively loop through the edge rows...
     counter = 0
     for ind, row in edge_df.set_index([edge_src_col, edge_dst_col])[edge_attr_cols].iterrows():
-        nx.set_edge_attributes(G, {(ind[0], ind[1], str(counter)): row[edge_attr_cols].to_dict()})
+        nx.set_edge_attributes(G, {(ind[0], ind[1], counter): row[edge_attr_cols].to_dict()})
         counter += 1
 
     logger.info("********************* CREATING NETWORKX GRAPH  ********************************")
